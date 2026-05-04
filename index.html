@@ -1,0 +1,1513 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Solar ML — Énergie Solaire</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Outfit:wght@300;400;600;700&display=swap" rel="stylesheet">
+<style>
+:root {
+  --sun: #FFBA00;
+  --sun2: #FF9500;
+  --sky: #070E1C;
+  --sky1: #0D1A30;
+  --sky2: #142240;
+  --accent: #FF5A36;
+  --green: #00D4A0;
+  --blue: #4DA6FF;
+  --text: #ECF0F9;
+  --muted: #7A8FAD;
+  --border: rgba(255,255,255,0.07);
+  --glass: rgba(255,255,255,0.03);
+  --r: 14px;
+}
+*{margin:0;padding:0;box-sizing:border-box;}
+html{scroll-behavior:smooth;}
+body{
+  font-family:'Outfit',sans-serif;
+  background:var(--sky);
+  color:var(--text);
+  min-height:100vh;
+  overflow-x:hidden;
+}
+/* ── NOISE OVERLAY ── */
+body::after{
+  content:'';position:fixed;inset:0;
+  background-image:url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.03'/%3E%3C/svg%3E");
+  pointer-events:none;z-index:0;opacity:.4;
+}
+/* ── GLOW BLOBS ── */
+.blob1,.blob2{
+  position:fixed;border-radius:50%;filter:blur(100px);pointer-events:none;z-index:0;
+}
+.blob1{width:600px;height:400px;top:-100px;left:-200px;background:radial-gradient(circle,rgba(255,186,0,.10),transparent 70%);}
+.blob2{width:500px;height:500px;bottom:-100px;right:-100px;background:radial-gradient(circle,rgba(0,212,160,.07),transparent 70%);}
+
+.app{position:relative;z-index:1;max-width:1340px;margin:0 auto;padding:0 24px 80px;}
+
+/* ═══════════ HEADER ═══════════ */
+.header{
+  display:flex;align-items:center;gap:18px;
+  padding:36px 0 24px;
+  border-bottom:1px solid var(--border);
+  margin-bottom:0;
+}
+.header-sun{
+  width:52px;height:52px;
+  background:conic-gradient(from 0deg,var(--sun),var(--sun2),var(--sun));
+  border-radius:50%;
+  display:flex;align-items:center;justify-content:center;
+  font-size:1.6rem;
+  animation:rotateSun 20s linear infinite;
+  flex-shrink:0;
+  box-shadow:0 0 32px rgba(255,186,0,.35);
+}
+@keyframes rotateSun{to{transform:rotate(360deg);}}
+.header h1{
+  font-family:'Space Mono',monospace;
+  font-size:clamp(1.2rem,3vw,1.7rem);
+  font-weight:700;color:var(--sun);
+  letter-spacing:-.02em;line-height:1.15;
+}
+.header p{color:var(--muted);font-size:.9rem;margin-top:3px;}
+
+/* ═══════════ NAV ═══════════ */
+.nav-wrap{
+  position:sticky;top:0;z-index:100;
+  background:rgba(7,14,28,.88);
+  backdrop-filter:blur(20px);
+  border-bottom:1px solid var(--border);
+  margin:0 -24px;padding:0 24px;
+}
+.nav-scroll{
+  display:flex;gap:2px;
+  overflow-x:auto;
+  padding:10px 0;
+  /* custom scrollbar */
+  scrollbar-width:thin;
+  scrollbar-color:rgba(255,186,0,.4) transparent;
+}
+.nav-scroll::-webkit-scrollbar{height:3px;}
+.nav-scroll::-webkit-scrollbar-track{background:transparent;}
+.nav-scroll::-webkit-scrollbar-thumb{background:rgba(255,186,0,.4);border-radius:2px;}
+/* scroll fade hints */
+.nav-wrap::before,.nav-wrap::after{
+  content:'';position:absolute;top:0;bottom:0;width:32px;z-index:2;pointer-events:none;
+}
+.nav-wrap::before{left:24px;background:linear-gradient(to right,rgba(7,14,28,.9),transparent);}
+.nav-wrap::after{right:24px;background:linear-gradient(to left,rgba(7,14,28,.9),transparent);}
+
+.nav-btn{
+  display:flex;align-items:center;gap:7px;
+  padding:9px 18px;
+  background:transparent;
+  border:1px solid transparent;
+  border-radius:30px;
+  color:var(--muted);
+  font-family:'Outfit',sans-serif;
+  font-size:.82rem;font-weight:600;
+  cursor:pointer;white-space:nowrap;
+  transition:all .2s;
+  flex-shrink:0;
+}
+.nav-btn:hover{color:var(--text);background:rgba(255,255,255,.05);}
+.nav-btn.active{
+  background:rgba(255,186,0,.12);
+  border-color:rgba(255,186,0,.35);
+  color:var(--sun);
+}
+.nav-step{
+  width:20px;height:20px;border-radius:50%;
+  display:flex;align-items:center;justify-content:center;
+  font-size:.65rem;font-weight:700;font-family:'Space Mono',monospace;
+  background:rgba(255,255,255,.08);
+  transition:all .2s;
+}
+.nav-btn.active .nav-step{background:var(--sun);color:var(--sky);}
+.nav-btn.done .nav-step{background:var(--green);color:var(--sky);}
+.nav-btn.done{color:var(--green);}
+
+/* ═══════════ SECTIONS ═══════════ */
+.content{padding:32px 0;}
+.section{display:none;}
+.section.active{display:block;animation:fadeUp .35s ease;}
+@keyframes fadeUp{from{opacity:0;transform:translateY(14px);}to{opacity:1;transform:translateY(0);}}
+
+.sec-head{margin-bottom:28px;}
+.sec-title{font-family:'Space Mono',monospace;font-size:1.25rem;color:var(--sun);margin-bottom:4px;}
+.sec-sub{color:var(--muted);font-size:.88rem;}
+
+/* ═══════════ CARDS ═══════════ */
+.card{
+  background:var(--glass);
+  border:1px solid var(--border);
+  border-radius:var(--r);
+  padding:22px 24px;
+  margin-bottom:20px;
+}
+.card-title{
+  font-family:'Space Mono',monospace;
+  font-size:.72rem;text-transform:uppercase;letter-spacing:.1em;
+  color:var(--muted);margin-bottom:16px;
+  display:flex;align-items:center;gap:8px;
+}
+.card-title::after{content:'';flex:1;height:1px;background:var(--border);}
+
+/* ═══════════ STAT GRID ═══════════ */
+.stat-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:14px;margin-bottom:20px;}
+.stat{
+  background:var(--glass);border:1px solid var(--border);
+  border-radius:var(--r);padding:18px 20px;
+  position:relative;overflow:hidden;
+}
+.stat::before{
+  content:'';position:absolute;top:0;left:0;right:0;height:2px;
+  background:linear-gradient(90deg,var(--sun),var(--sun2));
+}
+.stat-label{font-size:.72rem;text-transform:uppercase;letter-spacing:.09em;color:var(--muted);margin-bottom:8px;}
+.stat-val{
+  font-family:'Space Mono',monospace;font-size:1.9rem;font-weight:700;color:var(--sun);
+  line-height:1;
+}
+.stat-val.sm{font-size:1rem;padding-top:4px;}
+
+/* ═══════════ INFO BOX ═══════════ */
+.info-box{
+  background:rgba(255,186,0,.05);
+  border:1px solid rgba(255,186,0,.15);
+  border-left:3px solid var(--sun);
+  border-radius:var(--r);padding:14px 18px;
+  font-size:.88rem;color:var(--muted);margin-bottom:22px;
+  line-height:1.6;
+}
+.info-box strong{color:var(--sun);}
+
+/* ═══════════ ALERTS ═══════════ */
+.alert{padding:13px 18px;border-radius:10px;font-size:.88rem;margin-bottom:16px;}
+.alert-ok{background:rgba(0,212,160,.08);border:1px solid rgba(0,212,160,.25);color:var(--green);}
+.alert-warn{background:rgba(255,186,0,.08);border:1px solid rgba(255,186,0,.2);color:var(--sun);}
+.alert-err{background:rgba(255,90,54,.08);border:1px solid rgba(255,90,54,.2);color:var(--accent);}
+
+/* ═══════════ BUTTONS ═══════════ */
+.btn{
+  display:inline-flex;align-items:center;gap:8px;
+  padding:10px 22px;border:none;border-radius:30px;
+  font-family:'Outfit',sans-serif;font-size:.88rem;font-weight:600;
+  cursor:pointer;transition:all .2s;
+}
+.btn-sun{background:var(--sun);color:var(--sky);}
+.btn-sun:hover{background:#FFD040;transform:translateY(-2px);box-shadow:0 8px 24px rgba(255,186,0,.3);}
+.btn-green{background:var(--green);color:var(--sky);}
+.btn-green:hover{background:#00F0B8;transform:translateY(-2px);box-shadow:0 8px 24px rgba(0,212,160,.3);}
+.btn-ghost{background:var(--glass);border:1px solid var(--border);color:var(--text);}
+.btn-ghost:hover{background:rgba(255,255,255,.07);}
+.btn-accent{background:var(--accent);color:#fff;}
+.btn-accent:hover{background:#FF7A5E;transform:translateY(-2px);}
+.action-row{display:flex;gap:10px;flex-wrap:wrap;margin-top:22px;}
+
+/* ═══════════ UPLOAD AREA ═══════════ */
+.upload-zone{
+  border:2px dashed rgba(255,186,0,.25);
+  border-radius:20px;padding:52px 32px;
+  text-align:center;background:rgba(255,186,0,.03);
+  cursor:pointer;transition:all .3s;margin-bottom:24px;
+}
+.upload-zone:hover,.upload-zone.drag{
+  background:rgba(255,186,0,.07);
+  border-color:var(--sun);
+}
+.upload-icon{font-size:3rem;margin-bottom:12px;}
+.upload-zone h3{font-size:1rem;margin-bottom:6px;}
+.upload-zone p{color:var(--muted);font-size:.85rem;margin-bottom:18px;}
+.sample-link{display:block;margin-top:14px;font-size:.82rem;color:var(--muted);}
+.sample-link a{color:var(--green);cursor:pointer;text-decoration:underline;}
+
+/* ═══════════ TABLE ═══════════ */
+.tbl-wrap{overflow:auto;border-radius:var(--r);max-height:320px;}
+.tbl{width:100%;border-collapse:collapse;font-size:.82rem;}
+.tbl th{
+  padding:11px 14px;text-align:left;white-space:nowrap;
+  background:rgba(255,186,0,.08);
+  color:var(--sun);font-family:'Space Mono',monospace;font-size:.7rem;
+  position:sticky;top:0;
+}
+.tbl td{padding:9px 14px;border-bottom:1px solid var(--border);color:var(--muted);white-space:nowrap;}
+.tbl tr:hover td{background:rgba(255,255,255,.02);color:var(--text);}
+
+/* ═══════════ FORM ═══════════ */
+.form-row{margin-bottom:16px;}
+.form-label{
+  display:block;font-size:.75rem;text-transform:uppercase;letter-spacing:.08em;
+  color:var(--muted);margin-bottom:8px;
+}
+.form-input,.form-select{
+  width:100%;padding:11px 14px;
+  background:var(--glass);border:1px solid var(--border);
+  border-radius:10px;color:var(--text);
+  font-family:'Outfit',sans-serif;font-size:.92rem;
+  transition:border-color .2s;
+}
+.form-input:focus,.form-select:focus{outline:none;border-color:var(--sun);}
+.form-select option{background:var(--sky1);}
+.check-label{
+  display:flex;align-items:center;gap:10px;
+  cursor:pointer;font-size:.92rem;color:var(--text);
+  padding:10px 0;
+}
+.check-label input[type=checkbox]{accent-color:var(--sun);width:16px;height:16px;}
+.range-row{display:flex;align-items:center;gap:14px;}
+.range-row input[type=range]{flex:1;accent-color:var(--sun);cursor:pointer;}
+.range-val{font-family:'Space Mono',monospace;color:var(--sun);min-width:38px;text-align:right;font-size:.88rem;}
+
+/* ═══════════ ALGO CARDS ═══════════ */
+.algo-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:12px;margin-bottom:24px;}
+.algo-card{
+  border:1px solid var(--border);border-radius:var(--r);
+  padding:18px;text-align:center;cursor:pointer;
+  transition:all .2s;background:var(--glass);
+}
+.algo-card:hover{border-color:rgba(255,186,0,.3);background:rgba(255,186,0,.04);transform:translateY(-3px);}
+.algo-card.sel{
+  border-color:rgba(255,186,0,.5);background:rgba(255,186,0,.08);
+  box-shadow:0 0 0 1px rgba(255,186,0,.15);
+}
+.algo-icon{font-size:1.6rem;margin-bottom:8px;}
+.algo-name{font-size:.88rem;font-weight:600;color:var(--text);margin-bottom:4px;}
+.algo-card.sel .algo-name{color:var(--sun);}
+.algo-desc{font-size:.72rem;color:var(--muted);}
+
+/* ═══════════ PROGRESS ═══════════ */
+.loading{display:none;text-align:center;padding:32px;}
+.loading.on{display:block;}
+.spinner{
+  width:44px;height:44px;margin:0 auto 14px;
+  border:3px solid rgba(255,186,0,.15);
+  border-top-color:var(--sun);
+  border-radius:50%;animation:spin .8s linear infinite;
+}
+@keyframes spin{to{transform:rotate(360deg);}}
+.prog-bar{height:5px;background:rgba(255,255,255,.08);border-radius:3px;overflow:hidden;margin:12px 0;}
+.prog-fill{height:100%;background:linear-gradient(90deg,var(--sun),var(--green));border-radius:3px;transition:width .35s ease;}
+#trainStatus{color:var(--muted);font-size:.85rem;margin-bottom:10px;}
+
+/* ═══════════ CHART CARD ═══════════ */
+.chart-card{background:var(--glass);border:1px solid var(--border);border-radius:var(--r);padding:22px 24px;margin-bottom:20px;}
+.chart-title{font-family:'Space Mono',monospace;font-size:.7rem;text-transform:uppercase;letter-spacing:.1em;color:var(--muted);margin-bottom:14px;}
+
+/* ═══════════ FEATURE SELECTOR ═══════════ */
+.feat-selector{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:16px;}
+.feat-btn{
+  padding:5px 14px;border-radius:20px;
+  border:1px solid var(--border);background:var(--glass);
+  color:var(--muted);font-size:.78rem;cursor:pointer;transition:all .15s;
+}
+.feat-btn.active{background:rgba(255,186,0,.12);border-color:rgba(255,186,0,.4);color:var(--sun);}
+
+/* ═══════════ HEATMAP ═══════════ */
+.heatmap-wrap{overflow:auto;border-radius:10px;}
+.heatmap-tbl{border-collapse:collapse;font-size:.72rem;font-family:'Space Mono',monospace;}
+.heatmap-tbl th{color:var(--sun);padding:6px 10px;font-size:.65rem;white-space:nowrap;}
+.heatmap-tbl th.rot{
+  writing-mode:vertical-rl;transform:rotate(180deg);
+  height:70px;text-align:left;padding:4px 6px;
+}
+.heatmap-tbl .rl{text-align:right;padding-right:10px;white-space:nowrap;max-width:90px;overflow:hidden;text-overflow:ellipsis;}
+.heatmap-tbl td{padding:6px 10px;border:1px solid rgba(255,255,255,.04);text-align:center;}
+
+/* ═══════════ BEST MODEL ═══════════ */
+.best-card{
+  background:linear-gradient(135deg,rgba(255,186,0,.12),rgba(255,90,54,.06));
+  border:1px solid rgba(255,186,0,.25);border-radius:20px;
+  padding:30px;text-align:center;margin-bottom:24px;
+}
+.best-card .trophy{font-size:2.2rem;margin-bottom:10px;}
+.best-card h2{font-family:'Space Mono',monospace;font-size:1.3rem;color:var(--sun);margin-bottom:14px;}
+.best-metrics{display:flex;justify-content:center;gap:28px;flex-wrap:wrap;}
+.bm{text-align:center;}
+.bm-label{font-size:.68rem;text-transform:uppercase;letter-spacing:.1em;color:var(--muted);display:block;margin-bottom:4px;}
+.bm-val{font-family:'Space Mono',monospace;font-size:1.25rem;font-weight:700;color:var(--text);}
+
+/* ═══════════ RESULTS TABLE ═══════════ */
+.rtbl{width:100%;border-collapse:collapse;font-size:.82rem;}
+.rtbl th{padding:11px 14px;text-align:left;background:rgba(255,186,0,.08);color:var(--sun);font-family:'Space Mono',monospace;font-size:.68rem;white-space:nowrap;}
+.rtbl td{padding:11px 14px;border-bottom:1px solid var(--border);color:var(--muted);font-family:'Space Mono',monospace;font-size:.78rem;}
+.rtbl tr:hover td{background:rgba(255,255,255,.02);color:var(--text);}
+.rtbl .best-row td{background:rgba(255,186,0,.05);color:var(--text);}
+.rtbl .mname{color:var(--text);font-weight:700;}
+.badge-best{
+  display:inline-block;padding:2px 8px;border-radius:10px;
+  font-size:.6rem;font-weight:700;
+  background:rgba(255,186,0,.2);color:var(--sun);
+  border:1px solid rgba(255,186,0,.35);margin-left:6px;vertical-align:middle;
+}
+
+/* ═══════════ TWO COL ═══════════ */
+.two-col{display:grid;grid-template-columns:1fr 1fr;gap:18px;}
+@media(max-width:860px){
+  .two-col{grid-template-columns:1fr;}
+  .app{padding:0 14px 60px;}
+  .header{padding:24px 0 18px;}
+}
+
+/* ═══════════ FEATURE IMPORTANCE ═══════════ */
+.fi-item{margin-bottom:12px;}
+.fi-row{display:flex;justify-content:space-between;font-size:.82rem;margin-bottom:5px;color:var(--muted);}
+.fi-row span:last-child{font-family:'Space Mono',monospace;color:var(--sun);}
+.fi-track{height:7px;background:rgba(255,255,255,.06);border-radius:4px;overflow:hidden;}
+.fi-fill{height:100%;background:linear-gradient(90deg,var(--sun),var(--accent));border-radius:4px;transition:width .7s cubic-bezier(.4,0,.2,1);}
+
+/* ═══════════ PREDICT FORM CARDS ═══════════ */
+.pred-form-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:14px;margin-bottom:20px;}
+.pred-input-card{
+  background:var(--glass);border:1px solid var(--border);
+  border-radius:var(--r);padding:16px 18px;
+  transition:border-color .2s;
+}
+.pred-input-card:hover{border-color:rgba(255,186,0,0.25);}
+.pred-input-header{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:10px;}
+.pred-feat-name{font-size:.78rem;font-weight:600;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);}
+.pred-feat-val{
+  font-family:'Space Mono',monospace;font-size:1rem;
+  color:var(--sun);font-weight:700;
+}
+.pred-range-row{display:flex;align-items:center;gap:8px;margin-bottom:10px;}
+.pred-range-mn,.pred-range-mx{font-family:'Space Mono',monospace;font-size:.65rem;color:var(--muted);white-space:nowrap;min-width:36px;}
+.pred-range-mx{text-align:right;}
+.pred-slider{
+  flex:1;height:4px;cursor:pointer;accent-color:var(--sun);
+  background:linear-gradient(to right,rgba(255,186,0,.6) 0%,rgba(255,255,255,.1) 0%);
+}
+.pred-num-input{
+  width:100%;padding:8px 10px;
+  background:rgba(255,255,255,.05);border:1px solid var(--border);
+  border-radius:8px;color:var(--text);
+  font-family:'Space Mono',monospace;font-size:.88rem;
+  text-align:center;transition:border-color .2s;
+}
+.pred-num-input:focus{outline:none;border-color:var(--sun);}
+.pred-hint{font-size:.68rem;color:var(--muted);margin-top:7px;line-height:1.4;}
+.pred-hint b{color:var(--text);}
+
+/* quality badge in result */
+.pred-quality{
+  display:inline-block;margin:10px auto 20px;
+  padding:6px 18px;border-radius:20px;
+  font-size:.82rem;font-weight:600;
+  background:rgba(255,255,255,.07);
+}
+.pred-result{
+  background:linear-gradient(135deg,rgba(0,212,160,.12),rgba(0,212,160,.04));
+  border:1px solid rgba(0,212,160,.25);border-radius:20px;
+  padding:36px 24px;text-align:center;margin-top:24px;
+  animation:fadeUp .3s ease;
+}
+.pred-result h3{font-family:'Space Mono',monospace;font-size:.75rem;text-transform:uppercase;letter-spacing:.12em;color:var(--muted);margin-bottom:14px;}
+.pred-big{font-family:'Space Mono',monospace;font-size:3.2rem;font-weight:700;color:var(--green);line-height:1;margin-bottom:6px;}
+.pred-unit{font-size:.85rem;color:var(--muted);margin-bottom:22px;}
+.pred-meta{display:flex;justify-content:center;gap:36px;flex-wrap:wrap;}
+.pm{text-align:center;}
+.pm-lbl{font-size:.68rem;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);display:block;margin-bottom:4px;}
+.pm-val{font-family:'Space Mono',monospace;font-size:.95rem;color:var(--text);}
+
+/* ═══════════ SCROLLBAR GLOBAL ═══════════ */
+::-webkit-scrollbar{width:6px;height:6px;}
+::-webkit-scrollbar-track{background:transparent;}
+::-webkit-scrollbar-thumb{background:rgba(255,255,255,.12);border-radius:3px;}
+::-webkit-scrollbar-thumb:hover{background:rgba(255,255,255,.22);}
+</style>
+</head>
+<body>
+<div class="blob1"></div>
+<div class="blob2"></div>
+<div class="app">
+
+  <!-- HEADER -->
+  <div class="header">
+    <div class="header-sun">☀️</div>
+    <div>
+      <h1>Solar ML Dashboard</h1>
+      <p>Analyse &amp; prédiction d'énergie solaire par machine learning</p>
+    </div>
+  </div>
+
+  <!-- NAV -->
+  <div class="nav-wrap">
+    <div class="nav-scroll" id="navScroll">
+      <button class="nav-btn active" data-tab="upload"><span class="nav-step">1</span>Données</button>
+      <button class="nav-btn" data-tab="clean"><span class="nav-step">2</span>Nettoyage</button>
+      <button class="nav-btn" data-tab="explore"><span class="nav-step">3</span>Exploration</button>
+      <button class="nav-btn" data-tab="algos"><span class="nav-step">4</span>Algorithmes</button>
+      <button class="nav-btn" data-tab="results"><span class="nav-step">5</span>Résultats</button>
+      <button class="nav-btn" data-tab="predict"><span class="nav-step">6</span>Prédiction</button>
+    </div>
+  </div>
+
+  <div class="content">
+
+    <!-- ═══ 1. UPLOAD ═══ -->
+    <div id="upload" class="section active">
+      <div class="sec-head">
+        <div class="sec-title">📁 Chargement des Données</div>
+        <div class="sec-sub">Importez un fichier CSV — la dernière colonne sera la variable cible</div>
+      </div>
+      <div class="info-box"><strong>Format:</strong> CSV avec en-têtes, colonnes numériques. La <strong>dernière colonne</strong> = variable à prédire (ex: production kWh).</div>
+      <div class="upload-zone" id="uploadZone">
+        <div class="upload-icon">📤</div>
+        <h3>Glisser-déposer votre CSV ici</h3>
+        <p>ou cliquer pour parcourir</p>
+        <input type="file" id="fileInput" accept=".csv" style="display:none">
+        <button class="btn btn-sun" onclick="document.getElementById('fileInput').click()">Choisir un fichier</button>
+        <span class="sample-link">Pas de données ? <a onclick="loadDemo()">Charger la démo solaire</a></span>
+      </div>
+      <div id="uploadInfo" style="display:none">
+        <div class="alert alert-ok" id="uploadAlert"></div>
+        <div class="stat-grid" id="uploadStats"></div>
+        <div class="card">
+          <div class="card-title">Aperçu — 10 premières lignes</div>
+          <div class="tbl-wrap" id="previewTable"></div>
+        </div>
+        <div class="action-row">
+          <button class="btn btn-green" onclick="goTab('clean')">Suivant : Nettoyage →</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══ 2. CLEAN ═══ -->
+    <div id="clean" class="section">
+      <div class="sec-head">
+        <div class="sec-title">🧹 Nettoyage des Données</div>
+        <div class="sec-sub">Configurez les opérations de prétraitement</div>
+      </div>
+      <div class="card">
+        <div class="card-title">Options</div>
+        <label class="check-label"><input type="checkbox" id="optDup" checked> Supprimer les doublons</label>
+        <label class="check-label"><input type="checkbox" id="optMiss" checked> Remplir les valeurs manquantes (médiane)</label>
+        <label class="check-label"><input type="checkbox" id="optOut"> Supprimer les valeurs aberrantes (IQR × 1.5)</label>
+        <div class="form-row" style="margin-top:16px;">
+          <label class="form-label">Méthode de normalisation</label>
+          <select class="form-select" id="scalerMethod">
+            <option value="standard">StandardScaler — Z-score (µ=0, σ=1)</option>
+            <option value="minmax">MinMaxScaler — Plage [0, 1]</option>
+            <option value="robust">RobustScaler — Médiane / IQR</option>
+          </select>
+        </div>
+      </div>
+      <button class="btn btn-sun" onclick="runClean()">🧹 Nettoyer les Données</button>
+      <div class="loading" id="cleanLoad"><div class="spinner"></div><p style="color:var(--muted)">Nettoyage…</p></div>
+      <div id="cleanDone" style="display:none">
+        <div class="alert alert-ok">✓ Nettoyage terminé</div>
+        <div class="stat-grid" id="cleanStats"></div>
+        <div class="action-row">
+          <button class="btn btn-green" onclick="goTab('explore')">Suivant : Exploration →</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══ 3. EXPLORE ═══ -->
+    <div id="explore" class="section">
+      <div class="sec-head">
+        <div class="sec-title">📊 Exploration des Données</div>
+        <div class="sec-sub">Distributions, corrélations et statistiques descriptives</div>
+      </div>
+      <div class="stat-grid" id="exploreStats"></div>
+
+      <!-- Distribution histogramme par feature -->
+      <div class="chart-card">
+        <div class="chart-title">📊 Distribution — Histogramme par Feature</div>
+        <div class="feat-selector" id="featSelector"></div>
+        <canvas id="histChart" height="180"></canvas>
+      </div>
+
+      <!-- Box plot résumé -->
+      <div class="chart-card">
+        <div class="chart-title">📦 Résumé Statistique (Min / Q1 / Médiane / Q3 / Max)</div>
+        <canvas id="boxChart" height="200"></canvas>
+      </div>
+
+      <!-- Corrélations -->
+      <div class="chart-card">
+        <div class="chart-title">🔗 Corrélation de Pearson avec « <span id="targetLabel2"></span> »</div>
+        <canvas id="corrChart" height="160"></canvas>
+      </div>
+
+      <!-- Heatmap -->
+      <div class="chart-card">
+        <div class="chart-title">🌡️ Matrice de Corrélation</div>
+        <div class="heatmap-wrap"><table class="heatmap-tbl" id="heatTbl"></table></div>
+      </div>
+
+      <!-- Stats table -->
+      <div class="chart-card">
+        <div class="chart-title">📋 Statistiques Descriptives</div>
+        <div class="tbl-wrap" id="statsTbl" style="max-height:260px;"></div>
+      </div>
+
+      <div class="action-row">
+        <button class="btn btn-green" onclick="goTab('algos')">Suivant : Algorithmes →</button>
+      </div>
+    </div>
+
+    <!-- ═══ 4. ALGOS ═══ -->
+    <div id="algos" class="section">
+      <div class="sec-head">
+        <div class="sec-title">🤖 Sélection des Algorithmes</div>
+        <div class="sec-sub">Cliquez pour sélectionner / désélectionner</div>
+      </div>
+      <div class="algo-grid">
+        <div class="algo-card sel" data-algo="linear"><div class="algo-icon">📊</div><div class="algo-name">Régression Linéaire</div><div class="algo-desc">Simple, interprétable</div></div>
+        <div class="algo-card sel" data-algo="ridge"><div class="algo-icon">📈</div><div class="algo-name">Ridge</div><div class="algo-desc">Régularisation L2</div></div>
+        <div class="algo-card sel" data-algo="lasso"><div class="algo-icon">📉</div><div class="algo-name">Lasso</div><div class="algo-desc">Régularisation L1</div></div>
+        <div class="algo-card sel" data-algo="tree"><div class="algo-icon">🌳</div><div class="algo-name">Arbre de Décision</div><div class="algo-desc">Splits non-linéaires</div></div>
+        <div class="algo-card sel" data-algo="forest"><div class="algo-icon">🌲</div><div class="algo-name">Random Forest</div><div class="algo-desc">Ensemble d'arbres</div></div>
+        <div class="algo-card sel" data-algo="gradient"><div class="algo-icon">⚡</div><div class="algo-name">Gradient Boosting</div><div class="algo-desc">Boosting séquentiel</div></div>
+        <div class="algo-card" data-algo="knn"><div class="algo-icon">👥</div><div class="algo-name">KNN</div><div class="algo-desc">K plus proches voisins</div></div>
+      </div>
+      <div class="card">
+        <div class="card-title">Paramètres</div>
+        <div class="form-row">
+          <label class="form-label">Ratio données de test</label>
+          <div class="range-row">
+            <input type="range" id="testRatio" min="10" max="40" value="20" oninput="document.getElementById('testRatioVal').textContent=this.value+'%'">
+            <span class="range-val" id="testRatioVal">20%</span>
+          </div>
+        </div>
+        <div class="form-row">
+          <label class="form-label">Mélanger les données avant split</label>
+          <label class="check-label"><input type="checkbox" id="shuffleData" checked> Oui (recommandé)</label>
+        </div>
+      </div>
+      <button class="btn btn-sun" onclick="runTrain()">🚀 Entraîner les Modèles</button>
+      <div class="loading" id="trainLoad">
+        <div class="spinner"></div>
+        <p id="trainStatus">Initialisation…</p>
+        <div class="prog-bar"><div class="prog-fill" id="progFill" style="width:0%"></div></div>
+      </div>
+    </div>
+
+    <!-- ═══ 5. RESULTS ═══ -->
+    <div id="results" class="section">
+      <div class="sec-head">
+        <div class="sec-title">📈 Résultats de l'Entraînement</div>
+        <div class="sec-sub">Comparaison des performances — valeurs numériques réelles</div>
+      </div>
+
+      <div class="best-card" id="bestCard" style="display:none">
+        <div class="trophy">🏆</div>
+        <h2 id="bestName">—</h2>
+        <div class="best-metrics">
+          <div class="bm"><span class="bm-label">R² Test</span><span class="bm-val" id="bR2">—</span></div>
+          <div class="bm"><span class="bm-label">RMSE</span><span class="bm-val" id="bRMSE">—</span></div>
+          <div class="bm"><span class="bm-label">MAE</span><span class="bm-val" id="bMAE">—</span></div>
+          <div class="bm"><span class="bm-label">R² Train</span><span class="bm-val" id="bTrain">—</span></div>
+        </div>
+      </div>
+
+      <div class="chart-card">
+        <div class="chart-title">Tableau Comparatif Complet</div>
+        <div class="tbl-wrap"><table class="rtbl"><thead><tr><th>Modèle</th><th>R² Train</th><th>R² Test</th><th>RMSE</th><th>MAE</th><th>Δ Overfitting</th></tr></thead><tbody id="resTbody"></tbody></table></div>
+      </div>
+
+      <div class="two-col">
+        <div class="chart-card">
+          <div class="chart-title">R² Score Train vs Test</div>
+          <canvas id="r2Chart"></canvas>
+        </div>
+        <div class="chart-card">
+          <div class="chart-title">Erreurs RMSE &amp; MAE</div>
+          <canvas id="errChart"></canvas>
+        </div>
+      </div>
+
+      <div class="chart-card">
+        <div class="chart-title">Valeurs Réelles vs Prédictions — Meilleur Modèle</div>
+        <canvas id="scatterChart" height="260"></canvas>
+      </div>
+
+      <div class="chart-card">
+        <div class="chart-title">Distribution des Résidus</div>
+        <canvas id="residChart" height="180"></canvas>
+      </div>
+
+      <div class="chart-card" id="fiCard" style="display:none">
+        <div class="chart-title">Importance des Features</div>
+        <div id="fiContent"></div>
+      </div>
+
+      <div class="action-row">
+        <button class="btn btn-green" onclick="goTab('predict')">Suivant : Prédiction →</button>
+      </div>
+    </div>
+
+    <!-- ═══ 6. PREDICT ═══ -->
+    <div id="predict" class="section">
+      <div class="sec-head">
+        <div class="sec-title">🎯 Prédiction</div>
+        <div class="sec-sub">Estimez la production pour de nouvelles conditions météo</div>
+      </div>
+      <div class="info-box">
+        Modèle actif : <strong id="predModelInfo">—</strong> &nbsp;|&nbsp; R² Test : <strong id="predR2Info">—</strong>
+      </div>
+      <div class="pred-form-grid" id="predForm"></div>
+      <div class="action-row">
+        <button class="btn btn-sun" onclick="doPred()">🎯 Calculer</button>
+        <button class="btn btn-ghost" onclick="randValues()">🎲 Valeurs aléatoires</button>
+        <button class="btn btn-ghost" onclick="clearPred()">✕ Effacer</button>
+      </div>
+      <div id="predResult" style="display:none" class="pred-result">
+        <h3>Production Estimée</h3>
+        <div class="pred-big" id="predBig">—</div>
+        <div class="pred-unit" id="predUnit">—</div>
+        <div class="pred-quality" id="predQuality"></div>
+        <div class="pred-meta">
+          <div class="pm"><span class="pm-lbl">Intervalle ± MAE</span><span class="pm-val" id="predInterval">—</span></div>
+          <div class="pm"><span class="pm-lbl">Précision R²</span><span class="pm-val" id="predAcc">—</span></div>
+          <div class="pm"><span class="pm-lbl">Modèle</span><span class="pm-val" id="predMdl">—</span></div>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- /content -->
+</div><!-- /app -->
+
+<script>
+/* ══════════════════════════════════════════════
+   GLOBALS
+══════════════════════════════════════════════ */
+let RAW=null, CLEAN=null, FEAT=null, TARGET=null;
+let FEAT_NAMES=[], TARGET_NAME='';
+let SCALER=null, MODELS={}, BEST=null;
+const CI={}; // chart instances
+let SELECTED_FEAT_IDX=0; // for histogram selector
+
+/* ══════════════════════════════════════════════
+   NAV
+══════════════════════════════════════════════ */
+document.querySelectorAll('.nav-btn').forEach(b=>b.addEventListener('click',()=>goTab(b.dataset.tab)));
+function goTab(id){
+  document.querySelectorAll('.section').forEach(s=>s.classList.remove('active'));
+  document.querySelectorAll('.nav-btn').forEach(b=>b.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+  const btn=document.querySelector(`.nav-btn[data-tab="${id}"]`);
+  if(btn){btn.classList.add('active');btn.scrollIntoView({behavior:'smooth',block:'nearest',inline:'center'});}
+}
+
+/* ══════════════════════════════════════════════
+   UPLOAD
+══════════════════════════════════════════════ */
+const zone=document.getElementById('uploadZone');
+const fi=document.getElementById('fileInput');
+zone.addEventListener('dragover',e=>{e.preventDefault();zone.classList.add('drag');});
+zone.addEventListener('dragleave',()=>zone.classList.remove('drag'));
+zone.addEventListener('drop',e=>{e.preventDefault();zone.classList.remove('drag');const f=e.dataTransfer.files[0];if(f&&f.name.endsWith('.csv'))loadFile(f);});
+fi.addEventListener('change',e=>{if(e.target.files[0])loadFile(e.target.files[0]);});
+
+function loadFile(file){
+  Papa.parse(file,{header:true,dynamicTyping:true,skipEmptyLines:true,complete:r=>{
+    RAW=r.data.filter(row=>Object.values(row).some(v=>v!==null&&v!==''));
+    showUploadInfo(file.name);
+  }});
+}
+
+function loadDemo(){
+  const n=400;const rows=[];
+  for(let i=0;i<n;i++){
+    const irr=200+Math.random()*800;
+    const temp=10+Math.random()*35;
+    const hum=20+Math.random()*70;
+    const wind=Math.random()*18;
+    const cloud=Math.random()*100;
+    const angle=15+Math.random()*45;
+    const eff=Math.max(0,0.18*irr*(1-0.004*(temp-25))*(1-cloud/180)*Math.cos((angle-30)*Math.PI/180));
+    const noise=(Math.random()-.5)*15;
+    rows.push({irradiance:+irr.toFixed(1),temperature:+temp.toFixed(1),humidity:+hum.toFixed(1),wind_speed:+wind.toFixed(2),cloud_cover:+cloud.toFixed(1),panel_angle:+angle.toFixed(1),power_kWh:+Math.max(0,eff+noise).toFixed(3)});
+  }
+  RAW=rows;
+  showUploadInfo('demo_solaire.csv (générée)');
+}
+
+function showUploadInfo(name){
+  const cols=Object.keys(RAW[0]);
+  const numCols=cols.filter(c=>typeof RAW[0][c]==='number');
+  let miss=0;RAW.forEach(r=>Object.values(r).forEach(v=>{if(v===null||v===''||v===undefined)miss++;}));
+  document.getElementById('uploadAlert').textContent=`✓ Fichier chargé : ${name}`;
+  document.getElementById('uploadStats').innerHTML=
+    statCard('Lignes',RAW.length)+statCard('Colonnes',cols.length)+statCard('Numériques',numCols.length)+statCard('Manquants',miss);
+  document.getElementById('previewTable').innerHTML=buildTable(cols,RAW.slice(0,10));
+  document.getElementById('uploadInfo').style.display='block';
+  markDone('upload');
+}
+
+function statCard(label,val){return`<div class="stat"><div class="stat-label">${label}</div><div class="stat-val">${typeof val==='number'?val.toLocaleString():val}</div></div>`;}
+function statCardSm(label,val){return`<div class="stat"><div class="stat-label">${label}</div><div class="stat-val sm">${val}</div></div>`;}
+
+function buildTable(cols,rows){
+  let h='<table class="tbl"><thead><tr>'+cols.map(c=>`<th>${c}</th>`).join('')+'</tr></thead><tbody>';
+  rows.forEach(r=>{
+    h+='<tr>'+cols.map(c=>{const v=r[c];return`<td>${v===null||v===''||v===undefined?'<em style="color:var(--accent)">N/A</em>':(typeof v==='number'?+v.toFixed(4):v)}</td>`;}).join('')+'</tr>';
+  });
+  return h+'</tbody></table>';
+}
+
+function markDone(tab){
+  const btn=document.querySelector(`.nav-btn[data-tab="${tab}"]`);
+  if(btn)btn.classList.add('done');
+}
+
+/* ══════════════════════════════════════════════
+   CLEAN
+══════════════════════════════════════════════ */
+function runClean(){
+  if(!RAW){alert('Chargez d\'abord des données.');return;}
+  document.getElementById('cleanLoad').classList.add('on');
+  document.getElementById('cleanDone').style.display='none';
+  setTimeout(()=>{
+    CLEAN=RAW.map(r=>({...r}));
+    const before=CLEAN.length;
+    const cols=Object.keys(CLEAN[0]);
+
+    if(document.getElementById('optDup').checked){
+      const seen=new Set();
+      CLEAN=CLEAN.filter(r=>{const k=JSON.stringify(r);if(seen.has(k))return false;seen.add(k);return true;});
+    }
+
+    const numCols=cols.filter(c=>{const vs=CLEAN.map(r=>r[c]).filter(v=>v!==null&&v!==undefined);return vs.some(v=>typeof v==='number');});
+
+    if(document.getElementById('optMiss').checked){
+      numCols.forEach(c=>{
+        const vs=CLEAN.map(r=>r[c]).filter(v=>typeof v==='number'&&!isNaN(v)).sort((a,b)=>a-b);
+        if(!vs.length)return;
+        const med=vs[Math.floor(vs.length/2)];
+        CLEAN.forEach(r=>{if(r[c]===null||r[c]===undefined||isNaN(r[c]))r[c]=med;});
+      });
+    }
+
+    if(document.getElementById('optOut').checked){
+      numCols.forEach(c=>{
+        const vs=CLEAN.map(r=>r[c]).filter(v=>typeof v==='number').sort((a,b)=>a-b);
+        if(!vs.length)return;
+        const q1=vs[Math.floor(vs.length*.25)],q3=vs[Math.floor(vs.length*.75)],iqr=q3-q1;
+        CLEAN=CLEAN.filter(r=>typeof r[c]!=='number'||(r[c]>=q1-1.5*iqr&&r[c]<=q3+1.5*iqr));
+      });
+    }
+
+    TARGET_NAME=cols[cols.length-1];
+    FEAT_NAMES=cols.slice(0,-1).filter(c=>numCols.includes(c));
+    TARGET=CLEAN.map(r=>+r[TARGET_NAME]);
+    FEAT=CLEAN.map(r=>FEAT_NAMES.map(c=>isNaN(+r[c])?0:+r[c]));
+
+    // build scaler using ORIGINAL feature values (unscaled)
+    SCALER=buildScaler(FEAT,document.getElementById('scalerMethod').value);
+
+    document.getElementById('cleanLoad').classList.remove('on');
+    document.getElementById('cleanStats').innerHTML=
+      statCard('Avant',before)+statCard('Après',CLEAN.length)+statCard('Supprimées',before-CLEAN.length)+statCard('Features',FEAT_NAMES.length);
+    document.getElementById('cleanDone').style.display='block';
+    buildExplore();
+    markDone('clean');
+  },600);
+}
+
+function buildScaler(data,method){
+  const params=[];const scaled=data.map(()=>[]);
+  for(let j=0;j<data[0].length;j++){
+    const col=data.map(r=>r[j]);
+    let sc;
+    if(method==='standard'){
+      const mean=col.reduce((a,b)=>a+b,0)/col.length;
+      const std=Math.sqrt(col.reduce((s,v)=>s+Math.pow(v-mean,2),0)/col.length)||1;
+      sc=col.map(v=>(v-mean)/std);params.push({mean,std,method:'standard'});
+    }else if(method==='minmax'){
+      const mn=Math.min(...col),mx=Math.max(...col);
+      sc=col.map(v=>(v-mn)/((mx-mn)||1));params.push({mn,mx,method:'minmax'});
+    }else{
+      const s=[...col].sort((a,b)=>a-b);
+      const med=s[Math.floor(s.length/2)];
+      const q1=s[Math.floor(s.length*.25)],q3=s[Math.floor(s.length*.75)];
+      const iqr=(q3-q1)||1;
+      sc=col.map(v=>(v-med)/iqr);params.push({med,iqr,method:'robust'});
+    }
+    sc.forEach((v,i)=>scaled[i].push(v));
+  }
+  return{data:scaled,params};
+}
+
+function scaleOne(raw){
+  return raw.map((v,i)=>{
+    const p=SCALER.params[i];
+    if(p.method==='standard')return(v-p.mean)/(p.std||1);
+    if(p.method==='minmax')return(v-p.mn)/((p.mx-p.mn)||1);
+    return(v-p.med)/(p.iqr||1);
+  });
+}
+
+/* ══════════════════════════════════════════════
+   EXPLORE
+══════════════════════════════════════════════ */
+function buildExplore(){
+  document.getElementById('exploreStats').innerHTML=
+    statCard('Observations',CLEAN.length)+statCard('Features',FEAT_NAMES.length)+statCardSm('Variable cible',TARGET_NAME);
+
+  document.getElementById('targetLabel2').textContent=TARGET_NAME;
+  SELECTED_FEAT_IDX=0;
+
+  // Feature selector buttons
+  const sel=document.getElementById('featSelector');
+  sel.innerHTML=FEAT_NAMES.map((n,i)=>`<button class="feat-btn${i===0?' active':''}" onclick="selectFeat(${i},this)">${n}</button>`).join('');
+
+  renderHistogram(0);
+  renderBoxChart();
+  renderCorrChart();
+  renderHeatmap();
+  renderStatsTable();
+  markDone('explore');
+}
+
+function selectFeat(idx,el){
+  SELECTED_FEAT_IDX=idx;
+  document.querySelectorAll('.feat-btn').forEach(b=>b.classList.remove('active'));
+  el.classList.add('active');
+  renderHistogram(idx);
+}
+
+function renderHistogram(fi){
+  destroyC('histChart');
+  const ctx=document.getElementById('histChart').getContext('2d');
+  // compute original (unscaled) values for display
+  const vals=CLEAN.map(r=>+r[FEAT_NAMES[fi]]).filter(v=>!isNaN(v)).sort((a,b)=>a-b);
+  const mn=vals[0],mx=vals[vals.length-1];
+  const bins=25;const bsize=(mx-mn)/bins||1;
+  const counts=Array(bins).fill(0);
+  const labels=[];
+  for(let i=0;i<bins;i++)labels.push((mn+i*bsize+bsize/2).toFixed(2));
+  vals.forEach(v=>{const idx=Math.min(Math.floor((v-mn)/bsize),bins-1);counts[idx]++;});
+
+  CI['histChart']=new Chart(ctx,{
+    type:'bar',
+    data:{
+      labels,
+      datasets:[{
+        label:FEAT_NAMES[fi],
+        data:counts,
+        backgroundColor:'rgba(255,186,0,0.55)',
+        borderColor:'#FFBA00',
+        borderWidth:1,borderRadius:3,
+      }]
+    },
+    options:{
+      responsive:true,
+      plugins:{
+        legend:{labels:{color:'#7A8FAD',font:{size:11}}},
+        tooltip:{callbacks:{label:c=>`Fréquence: ${c.parsed.y}`}}
+      },
+      scales:{
+        x:{title:{display:true,text:`Valeur de ${FEAT_NAMES[fi]}`,color:'#7A8FAD'},ticks:{color:'#7A8FAD',maxTicksLimit:10},grid:{color:'rgba(255,255,255,0.04)'}},
+        y:{title:{display:true,text:'Fréquence',color:'#7A8FAD'},ticks:{color:'#7A8FAD'},grid:{color:'rgba(255,255,255,0.04)'},beginAtZero:true}
+      }
+    }
+  });
+}
+
+function renderBoxChart(){
+  destroyC('boxChart');
+  const ctx=document.getElementById('boxChart').getContext('2d');
+  // Use original values per feature
+  const q1s=[],meds=[],q3s=[],mnArr=[],mxArr=[];
+  FEAT_NAMES.forEach((_,fi)=>{
+    const col=CLEAN.map(r=>+r[FEAT_NAMES[fi]]).filter(v=>!isNaN(v)).sort((a,b)=>a-b);
+    mnArr.push(+col[0].toFixed(3));
+    q1s.push(+col[Math.floor(col.length*.25)].toFixed(3));
+    meds.push(+col[Math.floor(col.length*.5)].toFixed(3));
+    q3s.push(+col[Math.floor(col.length*.75)].toFixed(3));
+    mxArr.push(+col[col.length-1].toFixed(3));
+  });
+
+  CI['boxChart']=new Chart(ctx,{
+    type:'bar',
+    data:{
+      labels:FEAT_NAMES,
+      datasets:[
+        {label:'Min→Q1',data:q1s.map((v,i)=>[mnArr[i],v]),backgroundColor:'rgba(77,166,255,0.25)',borderColor:'rgba(77,166,255,0.5)',borderWidth:1,borderRadius:3},
+        {label:'Q1→Q3 (IQR)',data:q1s.map((v,i)=>[v,q3s[i]]),backgroundColor:'rgba(255,186,0,0.6)',borderColor:'#FFBA00',borderWidth:1,borderRadius:3},
+        {label:'Q3→Max',data:q3s.map((v,i)=>[v,mxArr[i]]),backgroundColor:'rgba(255,90,54,0.2)',borderColor:'rgba(255,90,54,0.4)',borderWidth:1,borderRadius:3},
+      ]
+    },
+    options:{
+      responsive:true,
+      plugins:{
+        legend:{labels:{color:'#7A8FAD',font:{size:11}}},
+        tooltip:{callbacks:{label:c=>{const[a,b]=c.raw;return`${c.dataset.label}: [${a}, ${b}]`;}}}
+      },
+      scales:{
+        x:{ticks:{color:'#7A8FAD'},grid:{color:'rgba(255,255,255,0.04)'}},
+        y:{ticks:{color:'#7A8FAD'},grid:{color:'rgba(255,255,255,0.04)'}}
+      }
+    }
+  });
+}
+
+function pearson(x,y){
+  const n=x.length;
+  const mx=x.reduce((a,b)=>a+b,0)/n,my=y.reduce((a,b)=>a+b,0)/n;
+  const num=x.reduce((s,v,i)=>s+(v-mx)*(y[i]-my),0);
+  const den=Math.sqrt(x.reduce((s,v)=>s+Math.pow(v-mx,2),0)*y.reduce((s,v)=>s+Math.pow(v-my,2),0));
+  return den===0?0:num/den;
+}
+
+function renderCorrChart(){
+  destroyC('corrChart');
+  const ctx=document.getElementById('corrChart').getContext('2d');
+  const corrs=FEAT_NAMES.map((_,fi)=>+pearson(FEAT.map(r=>r[fi]),TARGET).toFixed(4));
+  const cols=corrs.map(v=>v>=0?'rgba(255,186,0,0.65)':'rgba(255,90,54,0.65)');
+  const bcols=corrs.map(v=>v>=0?'#FFBA00':'#FF5A36');
+
+  CI['corrChart']=new Chart(ctx,{
+    type:'bar',
+    data:{labels:FEAT_NAMES,datasets:[{label:'r de Pearson',data:corrs,backgroundColor:cols,borderColor:bcols,borderWidth:1,borderRadius:5}]},
+    options:{
+      indexAxis:'y',responsive:true,
+      plugins:{
+        legend:{display:false},
+        tooltip:{callbacks:{label:c=>` r = ${(+c.parsed.x).toFixed(4)}`}}
+      },
+      scales:{
+        x:{min:-1,max:1,ticks:{color:'#7A8FAD',callback:v=>v.toFixed(1)},grid:{color:'rgba(255,255,255,0.04)'},title:{display:true,text:'Corrélation de Pearson',color:'#7A8FAD'}},
+        y:{ticks:{color:'#7A8FAD'},grid:{color:'rgba(255,255,255,0.04)'}}
+      }
+    }
+  });
+}
+
+function renderHeatmap(){
+  const allNames=[...FEAT_NAMES,TARGET_NAME];
+  const allCols=FEAT_NAMES.map((_,fi)=>FEAT.map(r=>r[fi]));
+  allCols.push(TARGET);
+  const tbl=document.getElementById('heatTbl');
+  let h='<thead><tr><th></th>'+allNames.map(n=>`<th class="rot">${n}</th>`).join('')+'</tr></thead><tbody>';
+  allNames.forEach((rn,ri)=>{
+    h+=`<tr><td class="rl">${rn}</td>`;
+    allNames.forEach((_,ci)=>{
+      const r=+pearson(allCols[ri],allCols[ci]).toFixed(2);
+      const abs=Math.abs(r);
+      const alpha=(.1+abs*.75).toFixed(2);
+      const bg=r>=0?`rgba(255,186,0,${alpha})`:`rgba(255,90,54,${alpha})`;
+      const fg=abs>.55?'#070E1C':'#ECF0F9';
+      h+=`<td style="background:${bg};color:${fg}">${r.toFixed(2)}</td>`;
+    });
+    h+='</tr>';
+  });
+  tbl.innerHTML=h+'</tbody>';
+}
+
+function renderStatsTable(){
+  const rows=FEAT_NAMES.map((n,fi)=>{
+    const col=CLEAN.map(r=>+r[n]).filter(v=>!isNaN(v)).sort((a,b)=>a-b);
+    const mean=col.reduce((a,b)=>a+b,0)/col.length;
+    const std=Math.sqrt(col.reduce((s,v)=>s+Math.pow(v-mean,2),0)/col.length);
+    return{n,min:col[0],max:col[col.length-1],mean,std,med:col[Math.floor(col.length/2)]};
+  });
+  let h='<table class="tbl"><thead><tr><th>Feature</th><th>Min</th><th>Max</th><th>Moyenne</th><th>Écart-type</th><th>Médiane</th></tr></thead><tbody>';
+  rows.forEach(r=>{h+=`<tr><td><strong style="color:var(--text)">${r.n}</strong></td><td>${r.min.toFixed(4)}</td><td>${r.max.toFixed(4)}</td><td>${r.mean.toFixed(4)}</td><td>${r.std.toFixed(4)}</td><td>${r.med.toFixed(4)}</td></tr>`;});
+  document.getElementById('statsTbl').innerHTML=h+'</tbody></table>';
+}
+
+/* ══════════════════════════════════════════════
+   ALGO CARDS
+══════════════════════════════════════════════ */
+document.querySelectorAll('.algo-card').forEach(c=>c.addEventListener('click',function(){this.classList.toggle('sel');}));
+
+/* ══════════════════════════════════════════════
+   TRAIN
+══════════════════════════════════════════════ */
+async function runTrain(){
+  if(!FEAT){alert('Nettoyez d\'abord les données.');return;}
+  const algos=Array.from(document.querySelectorAll('.algo-card.sel')).map(c=>c.dataset.algo);
+  if(!algos.length){alert('Sélectionnez au moins un algorithme.');return;}
+
+  document.getElementById('trainLoad').classList.add('on');
+  MODELS={};
+
+  const ratio=parseInt(document.getElementById('testRatio').value)/100;
+  const shuffle=document.getElementById('shuffleData').checked;
+
+  // Prepare data
+  let idx=FEAT.map((_,i)=>i);
+  if(shuffle){for(let i=idx.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[idx[i],idx[j]]=[idx[j],idx[i]];}}
+  const split=Math.floor(idx.length*(1-ratio));
+
+  const XS=SCALER.data; // scaled
+  const XTr=idx.slice(0,split).map(i=>XS[i]);
+  const XTe=idx.slice(split).map(i=>XS[i]);
+  const yTr=idx.slice(0,split).map(i=>TARGET[i]);
+  const yTe=idx.slice(split).map(i=>TARGET[i]);
+
+  for(let i=0;i<algos.length;i++){
+    const a=algos[i];
+    const pct=Math.round((i+1)/algos.length*100);
+    document.getElementById('progFill').style.width=pct+'%';
+    document.getElementById('trainStatus').textContent=`Entraînement : ${algoName(a)} (${pct}%)`;
+    await tick();
+    MODELS[a]=await fitModel(a,XTr,yTr,XTe,yTe);
+  }
+
+  document.getElementById('trainLoad').classList.remove('on');
+  showResults();
+  goTab('results');
+  markDone('algos');markDone('results');
+}
+
+const tick=()=>new Promise(r=>setTimeout(r,80));
+const algoName=a=>({linear:'Régression Linéaire',ridge:'Ridge',lasso:'Lasso',tree:'Arbre de Décision',forest:'Random Forest',gradient:'Gradient Boosting',knn:'KNN'}[a]||a);
+
+async function fitModel(algo,XTr,yTr,XTe,yTe){
+  let pTr,pTe,mdl;
+  if(['linear','ridge','lasso'].includes(algo)){
+    mdl=linReg(XTr,yTr,algo);pTr=linPredict(mdl,XTr);pTe=linPredict(mdl,XTe);
+  }else if(algo==='tree'||algo==='forest'){
+    mdl=buildForest(XTr,yTr,algo==='forest');pTr=forestPredict(mdl,XTr);pTe=forestPredict(mdl,XTe);
+  }else if(algo==='gradient'){
+    mdl=gradBoost(XTr,yTr);pTr=gbPredict(mdl,XTr);pTe=gbPredict(mdl,XTe);
+  }else if(algo==='knn'){
+    mdl={type:'knn',XTr,yTr,k:7};pTr=knnPredict(mdl,XTr);pTe=knnPredict(mdl,XTe);
+  }
+  const R2tr=r2(yTr,pTr),R2te=r2(yTe,pTe),RMSE=rmse(yTe,pTe),MAE=mae(yTe,pTe);
+  const res={algo,name:algoName(algo),mdl,R2tr,R2te,RMSE,MAE,pTe,yTe,resid:yTe.map((v,i)=>v-pTe[i])};
+  if((algo==='tree'||algo==='forest')&&mdl.trees){res.fi=featureImp(mdl);}
+  return res;
+}
+
+/* ══════════════════════════════════════════════
+   ML ALGORITHMS
+══════════════════════════════════════════════ */
+function linReg(X,y,type){
+  const Xb=X.map(r=>[1,...r]);
+  const XT=T(Xb);let XTX=mm(XT,Xb);
+  if(type!=='linear'){const lam=type==='lasso'?.05:.1;for(let i=1;i<XTX.length;i++)XTX[i][i]+=lam;}
+  const XTy=XT.map(row=>row.reduce((s,v,i)=>s+v*y[i],0));
+  return{type:'linear',w:solveLS(XTX,XTy)};
+}
+function linPredict(mdl,X){return X.map(r=>[1,...r].reduce((s,v,i)=>s+v*mdl.w[i],0));}
+
+function buildForest(X,y,isForest){
+  const n=isForest?15:1;const trees=[];
+  for(let t=0;t<n;t++){
+    let Xs=X,ys=y;
+    if(isForest){const idx=Array.from({length:X.length},()=>Math.floor(Math.random()*X.length));Xs=idx.map(i=>X[i]);ys=idx.map(i=>y[i]);}
+    trees.push(growTree(Xs,ys,0,6,4));
+  }
+  return{type:'forest',trees,isForest};
+}
+
+function growTree(X,y,d,mxD,mnS){
+  const mean=y.reduce((a,b)=>a+b,0)/y.length;
+  if(d>=mxD||X.length<mnS)return{leaf:mean};
+  const{fi,thr,li,ri}=bestSplit(X,y);
+  if(!li.length||!ri.length)return{leaf:mean};
+  return{fi,thr,left:growTree(li.map(i=>X[i]),li.map(i=>y[i]),d+1,mxD,mnS),right:growTree(ri.map(i=>X[i]),ri.map(i=>y[i]),d+1,mxD,mnS)};
+}
+
+function bestSplit(X,y){
+  let bScore=Infinity,bFi=0,bThr=0,bLi=[],bRi=[];
+  for(let fi=0;fi<X[0].length;fi++){
+    const vals=[...new Set(X.map(r=>r[fi]))].sort((a,b)=>a-b);
+    for(let k=0;k<vals.length-1;k++){
+      const thr=(vals[k]+vals[k+1])/2;
+      const li=[],ri=[];X.forEach((r,i)=>(r[fi]<=thr?li:ri).push(i));
+      if(!li.length||!ri.length)continue;
+      const sc=varArr(li.map(i=>y[i]))*li.length+varArr(ri.map(i=>y[i]))*ri.length;
+      if(sc<bScore){bScore=sc;bFi=fi;bThr=thr;bLi=li;bRi=ri;}
+    }
+  }
+  return{fi:bFi,thr:bThr,li:bLi,ri:bRi};
+}
+
+function nodePredict(node,r){if(node.leaf!==undefined)return node.leaf;return nodePredict(r[node.fi]<=node.thr?node.left:node.right,r);}
+function forestPredict(mdl,X){return X.map(r=>{const ps=mdl.trees.map(t=>nodePredict(t,r));return ps.reduce((a,b)=>a+b,0)/ps.length;});}
+
+function gradBoost(X,y){
+  const nE=25,lr=0.08;
+  const init=y.reduce((a,b)=>a+b,0)/y.length;
+  let preds=Array(y.length).fill(init);const trees=[];
+  for(let i=0;i<nE;i++){
+    const resid=y.map((v,j)=>v-preds[j]);
+    const tree=growTree(X,resid,0,4,4);trees.push(tree);
+    const tp=X.map(r=>nodePredict(tree,r));
+    preds=preds.map((p,j)=>p+lr*tp[j]);
+  }
+  return{type:'gradient',trees,lr,init};
+}
+function gbPredict(mdl,X){return X.map(r=>{let p=mdl.init;mdl.trees.forEach(t=>p+=mdl.lr*nodePredict(t,r));return p;});}
+
+function knnPredict(mdl,X){
+  return X.map(tp=>{
+    const ds=mdl.XTr.map((tr,i)=>({d:Math.sqrt(tp.reduce((s,v,j)=>s+Math.pow(v-tr[j],2),0)),v:mdl.yTr[i]}));
+    ds.sort((a,b)=>a.d-b.d);
+    return ds.slice(0,mdl.k).reduce((s,n)=>s+n.v,0)/mdl.k;
+  });
+}
+
+function featureImp(mdl){
+  const imp=Array(FEAT_NAMES.length).fill(0);
+  const walk=n=>{if(n.fi!==undefined){imp[n.fi]++;if(n.left)walk(n.left);if(n.right)walk(n.right);}};
+  mdl.trees.forEach(t=>walk(t));
+  const tot=imp.reduce((a,b)=>a+b,0)||1;
+  return FEAT_NAMES.map((n,i)=>({name:n,imp:imp[i]/tot})).sort((a,b)=>b.imp-a.imp);
+}
+
+/* ══════════════════════════════════════════════
+   METRICS
+══════════════════════════════════════════════ */
+function r2(yt,yp){
+  const m=yt.reduce((a,b)=>a+b,0)/yt.length;
+  const sst=yt.reduce((s,v)=>s+Math.pow(v-m,2),0);
+  const ssr=yt.reduce((s,v,i)=>s+Math.pow(v-yp[i],2),0);
+  return sst===0?0:1-ssr/sst;
+}
+function rmse(yt,yp){return Math.sqrt(yt.reduce((s,v,i)=>s+Math.pow(v-yp[i],2),0)/yt.length);}
+function mae(yt,yp){return yt.reduce((s,v,i)=>s+Math.abs(v-yp[i]),0)/yt.length;}
+function varArr(a){const m=a.reduce((x,y)=>x+y,0)/a.length;return a.reduce((s,v)=>s+Math.pow(v-m,2),0)/a.length;}
+
+/* ══════════════════════════════════════════════
+   MATRIX
+══════════════════════════════════════════════ */
+function T(M){return M[0].map((_,i)=>M.map(r=>r[i]));}
+function mm(A,B){const R=A.map(()=>Array(B[0].length).fill(0));for(let i=0;i<A.length;i++)for(let j=0;j<B[0].length;j++)for(let k=0;k<A[0].length;k++)R[i][j]+=A[i][k]*B[k][j];return R;}
+function solveLS(A,b){
+  const n=A.length;const aug=A.map((r,i)=>[...r,b[i]]);
+  for(let i=0;i<n;i++){
+    let mx=i;for(let k=i+1;k<n;k++)if(Math.abs(aug[k][i])>Math.abs(aug[mx][i]))mx=k;
+    [aug[i],aug[mx]]=[aug[mx],aug[i]];
+    for(let k=i+1;k<n;k++){const f=aug[k][i]/aug[i][i];for(let j=i;j<=n;j++)aug[k][j]-=f*aug[i][j];}
+  }
+  const x=Array(n).fill(0);
+  for(let i=n-1;i>=0;i--){x[i]=aug[i][n];for(let j=i+1;j<n;j++)x[i]-=aug[i][j]*x[j];x[i]/=aug[i][i]||1;}
+  return x;
+}
+
+/* ══════════════════════════════════════════════
+   SHOW RESULTS — toutes les valeurs numériques réelles
+══════════════════════════════════════════════ */
+function showResults(){
+  const mods=Object.values(MODELS).sort((a,b)=>b.R2te-a.R2te);
+  BEST=mods[0];
+
+  // Best card
+  document.getElementById('bestCard').style.display='block';
+  document.getElementById('bestName').textContent=BEST.name;
+  document.getElementById('bR2').textContent=fmt4(BEST.R2te);
+  document.getElementById('bRMSE').textContent=fmt4(BEST.RMSE);
+  document.getElementById('bMAE').textContent=fmt4(BEST.MAE);
+  document.getElementById('bTrain').textContent=fmt4(BEST.R2tr);
+
+  // Table
+  const tb=document.getElementById('resTbody');tb.innerHTML='';
+  mods.forEach((m,idx)=>{
+    const ov=m.R2tr-m.R2te;
+    const isBest=idx===0;
+    const r2Color=m.R2te>0.85?'var(--green)':m.R2te>0.6?'var(--sun)':'var(--accent)';
+    const ovColor=Math.abs(ov)<0.05?'var(--green)':Math.abs(ov)<0.15?'var(--sun)':'var(--accent)';
+    tb.innerHTML+=`<tr class="${isBest?'best-row':''}">
+      <td class="mname">${isBest?'🏆 ':''}${m.name}${isBest?'<span class="badge-best">BEST</span>':''}</td>
+      <td>${fmt4(m.R2tr)}</td>
+      <td style="color:${r2Color}">${fmt4(m.R2te)}</td>
+      <td>${fmt4(m.RMSE)}</td>
+      <td>${fmt4(m.MAE)}</td>
+      <td style="color:${ovColor}">${(ov>=0?'+':'')+fmt4(ov)}</td>
+    </tr>`;
+  });
+
+  // R2 Chart — valeurs réelles, pas de min/max undefined
+  destroyC('r2Chart');
+  CI['r2Chart']=new Chart(document.getElementById('r2Chart').getContext('2d'),{
+    type:'bar',
+    data:{
+      labels:mods.map(m=>m.name),
+      datasets:[
+        {label:'R² Train',data:mods.map(m=>+m.R2tr.toFixed(4)),backgroundColor:'rgba(77,166,255,0.35)',borderColor:'#4DA6FF',borderWidth:2,borderRadius:5},
+        {label:'R² Test',data:mods.map(m=>+m.R2te.toFixed(4)),backgroundColor:'rgba(0,212,160,0.55)',borderColor:'#00D4A0',borderWidth:2,borderRadius:5},
+      ]
+    },
+    options:mkOpts({yMin:0,yMax:1,yLabel:'R² Score',title:'R² Score (plus haut = meilleur)'})
+  });
+
+  // Error Chart — vraies valeurs RMSE/MAE
+  destroyC('errChart');
+  CI['errChart']=new Chart(document.getElementById('errChart').getContext('2d'),{
+    type:'bar',
+    data:{
+      labels:mods.map(m=>m.name),
+      datasets:[
+        {label:'RMSE',data:mods.map(m=>+m.RMSE.toFixed(4)),backgroundColor:'rgba(255,90,54,0.55)',borderColor:'#FF5A36',borderWidth:2,borderRadius:5},
+        {label:'MAE',data:mods.map(m=>+m.MAE.toFixed(4)),backgroundColor:'rgba(255,186,0,0.45)',borderColor:'#FFBA00',borderWidth:2,borderRadius:5},
+      ]
+    },
+    options:mkOpts({yLabel:'Erreur',title:'RMSE & MAE (plus bas = meilleur)'})
+  });
+
+  // Scatter — réel vs prédit  ⚠️ type mixte: chart 'bar' global + datasets typés individuellement
+  destroyC('scatterChart');
+  const scMin=Math.min(...BEST.yTe), scMax=Math.max(...BEST.yTe);
+  // Sous-sample max 300 points pour lisibilité
+  const scPts=BEST.yTe.map((v,i)=>({x:+v.toFixed(4),y:+BEST.pTe[i].toFixed(4)}));
+  const scSampled=scPts.length>300?scPts.filter((_,i)=>i%Math.ceil(scPts.length/300)===0):scPts;
+  CI['scatterChart']=new Chart(document.getElementById('scatterChart').getContext('2d'),{
+    type:'scatter',                          // type global = scatter
+    data:{datasets:[
+      {
+        type:'scatter',
+        label:'Prédictions vs Réel',
+        data:scSampled,
+        backgroundColor:'rgba(255,186,0,0.5)',
+        pointRadius:4,pointHoverRadius:7,
+        pointBorderWidth:0,
+      },
+      {
+        type:'line',                         // dataset ligne explicitement typé
+        label:'Prédiction parfaite',
+        data:[{x:scMin,y:scMin},{x:scMax,y:scMax}],
+        borderColor:'#00D4A0',
+        borderWidth:2,
+        pointRadius:0,
+        fill:false,
+        tension:0,
+      },
+    ]},
+    options:{
+      responsive:true,
+      animation:{duration:400},
+      plugins:{
+        legend:{labels:{color:'#7A8FAD',font:{size:11}}},
+        tooltip:{callbacks:{label:c=>{
+          if(c.dataset.type==='line')return null;
+          return `Réel: ${c.parsed.x.toFixed(3)} | Prédit: ${c.parsed.y.toFixed(3)}`;
+        }}}
+      },
+      scales:{
+        x:{title:{display:true,text:`Valeurs Réelles — ${TARGET_NAME}`,color:'#7A8FAD'},ticks:{color:'#7A8FAD'},grid:{color:'rgba(255,255,255,0.04)'}},
+        y:{title:{display:true,text:`Prédictions — ${TARGET_NAME}`,color:'#7A8FAD'},ticks:{color:'#7A8FAD'},grid:{color:'rgba(255,255,255,0.04)'}}
+      }
+    }
+  });
+
+  // Résidus histogramme — calcul robuste
+  destroyC('residChart');
+  const res=BEST.resid.filter(v=>isFinite(v));
+  if(res.length>0){
+    const rMn=Math.min(...res),rMx=Math.max(...res);
+    const rRange=rMx-rMn||1;
+    const rBins=Math.min(24,Math.max(8,Math.floor(Math.sqrt(res.length))));
+    const rBs=rRange/rBins;
+    const rCounts=Array(rBins).fill(0);
+    const rLabels=Array.from({length:rBins},(_,i)=>(rMn+(i+0.5)*rBs).toFixed(3));
+    res.forEach(v=>{
+      const idx=Math.min(Math.floor((v-rMn)/rBs),rBins-1);
+      if(idx>=0)rCounts[idx]++;
+    });
+    CI['residChart']=new Chart(document.getElementById('residChart').getContext('2d'),{
+      type:'bar',
+      data:{
+        labels:rLabels,
+        datasets:[{
+          label:'Nombre de résidus',
+          data:rCounts,
+          backgroundColor:rCounts.map((_,i)=>i===Math.floor(rBins/2)?'rgba(255,186,0,0.7)':'rgba(255,90,54,0.4)'),
+          borderColor:'#FF5A36',borderWidth:1,borderRadius:4,
+        }]
+      },
+      options:{
+        responsive:true,
+        animation:{duration:400},
+        plugins:{
+          legend:{labels:{color:'#7A8FAD',font:{size:11}}},
+          tooltip:{callbacks:{label:c=>`Fréquence: ${c.parsed.y} résidus`}}
+        },
+        scales:{
+          x:{title:{display:true,text:'Résidu = Réel − Prédit',color:'#7A8FAD'},ticks:{color:'#7A8FAD',maxTicksLimit:10},grid:{color:'rgba(255,255,255,0.04)'}},
+          y:{title:{display:true,text:'Nombre d\'observations',color:'#7A8FAD'},ticks:{color:'#7A8FAD'},grid:{color:'rgba(255,255,255,0.04)'},beginAtZero:true}
+        }
+      }
+    });
+  }
+
+  // Feature importance
+  if(BEST.fi){
+    document.getElementById('fiCard').style.display='block';
+    document.getElementById('fiContent').innerHTML=BEST.fi.map(item=>{
+      const pct=(item.imp*100).toFixed(1);
+      return`<div class="fi-item"><div class="fi-row"><span>${item.name}</span><span>${pct}%</span></div><div class="fi-track"><div class="fi-fill" style="width:${pct}%"></div></div></div>`;
+    }).join('');
+  }else{document.getElementById('fiCard').style.display='none';}
+
+  // Setup predict
+  document.getElementById('predModelInfo').textContent=BEST.name;
+  document.getElementById('predR2Info').textContent=(BEST.R2te*100).toFixed(2)+'%';
+  buildPredForm();
+  markDone('predict');
+}
+
+function mkOpts({yMin,yMax,yLabel,xLabel,title}={}){
+  return{
+    responsive:true,
+    plugins:{
+      legend:{labels:{color:'#7A8FAD',font:{size:11}}},
+      title:{display:!!title,text:title||'',color:'#7A8FAD',font:{size:11}}
+    },
+    scales:{
+      x:{ticks:{color:'#7A8FAD',maxRotation:30},grid:{color:'rgba(255,255,255,0.04)'},title:{display:!!xLabel,text:xLabel||'',color:'#7A8FAD'}},
+      y:{
+        beginAtZero:!yMin,
+        ...(yMin!==undefined?{min:yMin}:{}),
+        ...(yMax!==undefined?{max:yMax}:{}),
+        ticks:{color:'#7A8FAD'},
+        grid:{color:'rgba(255,255,255,0.04)'},
+        title:{display:!!yLabel,text:yLabel||'',color:'#7A8FAD'}
+      }
+    }
+  };
+}
+
+function fmt4(v){if(v===undefined||v===null||isNaN(v))return'—';return(+v).toFixed(4);}
+
+function destroyC(id){if(CI[id]){CI[id].destroy();delete CI[id];}}
+
+/* ══════════════════════════════════════════════
+   PREDICT
+══════════════════════════════════════════════ */
+// Store feature stats globally for clamping
+let FEAT_STATS={};
+
+function buildPredForm(){
+  // Compute and cache stats per feature (original unscaled values)
+  FEAT_STATS={};
+  FEAT_NAMES.forEach(name=>{
+    const col=CLEAN.map(r=>+r[name]).filter(v=>!isNaN(v)&&isFinite(v)).sort((a,b)=>a-b);
+    const mn=col[0], mx=col[col.length-1];
+    const med=col[Math.floor(col.length/2)];
+    const q1=col[Math.floor(col.length*0.25)];
+    const q3=col[Math.floor(col.length*0.75)];
+    // Compute a sensible step (1% of range, min 0.001)
+    const range=mx-mn||1;
+    const step=Math.max(0.001, +(range/200).toFixed(6));
+    FEAT_STATS[name]={mn,mx,med,q1,q3,step,range};
+  });
+
+  const form=document.getElementById('predForm');
+  form.innerHTML=FEAT_NAMES.map(name=>{
+    const s=FEAT_STATS[name];
+    const decimals=s.step<0.1?4:s.step<1?2:1;
+    return`<div class="pred-input-card">
+      <div class="pred-input-header">
+        <span class="pred-feat-name">${name}</span>
+        <span class="pred-feat-val" id="pv_${name}">${s.med.toFixed(decimals)}</span>
+      </div>
+      <div class="pred-range-row">
+        <span class="pred-range-mn">${s.mn.toFixed(decimals)}</span>
+        <input class="pred-slider" type="range"
+          id="ps_${name}"
+          min="${s.mn}" max="${s.mx}" step="${s.step}"
+          value="${s.med}"
+          oninput="syncInput('${name}',this.value,${decimals})">
+        <span class="pred-range-mx">${s.mx.toFixed(decimals)}</span>
+      </div>
+      <input class="pred-num-input" type="number"
+        id="pi_${name}"
+        min="${s.mn}" max="${s.mx}" step="${s.step}"
+        value="${s.med.toFixed(decimals)}"
+        oninput="syncSlider('${name}',this.value,${decimals})">
+      <div class="pred-hint">Médiane: <b>${s.med.toFixed(decimals)}</b> &nbsp;|&nbsp; Q1: ${s.q1.toFixed(decimals)} &nbsp;|&nbsp; Q3: ${s.q3.toFixed(decimals)}</div>
+    </div>`;
+  }).join('');
+}
+
+function syncInput(name,val,dec){
+  const s=FEAT_STATS[name];
+  const clamped=Math.min(s.mx,Math.max(s.mn,+val));
+  document.getElementById(`pv_${name}`).textContent=(+clamped).toFixed(dec);
+  document.getElementById(`pi_${name}`).value=(+clamped).toFixed(dec);
+}
+function syncSlider(name,val,dec){
+  const s=FEAT_STATS[name];
+  let clamped=+val;
+  if(isNaN(clamped))return;
+  clamped=Math.min(s.mx,Math.max(s.mn,clamped));
+  document.getElementById(`ps_${name}`).value=clamped;
+  document.getElementById(`pv_${name}`).textContent=clamped.toFixed(dec);
+}
+
+function randValues(){
+  FEAT_NAMES.forEach(name=>{
+    const s=FEAT_STATS[name];
+    // Random between Q1 and Q3 → realistic range
+    const v=s.q1+Math.random()*(s.q3-s.q1);
+    const decimals=s.step<0.1?4:s.step<1?2:1;
+    document.getElementById(`pi_${name}`).value=v.toFixed(decimals);
+    document.getElementById(`ps_${name}`).value=v;
+    document.getElementById(`pv_${name}`).textContent=v.toFixed(decimals);
+  });
+  document.getElementById('predResult').style.display='none';
+}
+
+function clearPred(){
+  FEAT_NAMES.forEach(name=>{
+    const s=FEAT_STATS[name];
+    const decimals=s.step<0.1?4:s.step<1?2:1;
+    document.getElementById(`pi_${name}`).value=s.med.toFixed(decimals);
+    document.getElementById(`ps_${name}`).value=s.med;
+    document.getElementById(`pv_${name}`).textContent=s.med.toFixed(decimals);
+  });
+  document.getElementById('predResult').style.display='none';
+}
+
+function doPred(){
+  if(!BEST){alert('Entraînez d\'abord les modèles.');return;}
+  const raw=[];
+  let hasErr=false;
+  for(const name of FEAT_NAMES){
+    const s=FEAT_STATS[name];
+    let v=parseFloat(document.getElementById(`pi_${name}`).value);
+    if(isNaN(v)){
+      // fallback to slider value
+      v=parseFloat(document.getElementById(`ps_${name}`).value);
+    }
+    if(isNaN(v)){alert(`Remplissez le champ "${name}"`);hasErr=true;break;}
+    // Clamp to valid range
+    v=Math.min(s.mx,Math.max(s.mn,v));
+    raw.push(v);
+  }
+  if(hasErr)return;
+
+  const scaled=scaleOne(raw);
+  const m=BEST.mdl;
+  let rawPred;
+  if(m.type==='linear')      rawPred=linPredict(m,[scaled])[0];
+  else if(m.type==='forest') rawPred=forestPredict(m,[scaled])[0];
+  else if(m.type==='gradient')rawPred=gbPredict(m,[scaled])[0];
+  else                        rawPred=knnPredict(m,[scaled])[0];
+
+  // Ensure non-negative (energy production can't be negative)
+  const targetMin=Math.max(0,Math.min(...TARGET));
+  const targetMax=Math.max(...TARGET);
+  // Clamp to plausible range [0, max*1.1]
+  const pred=Math.max(targetMin, Math.min(rawPred, targetMax*1.1));
+
+  const decimals=pred<10?4:pred<100?3:2;
+  const lo=Math.max(0,pred-BEST.MAE).toFixed(decimals);
+  const hi=(pred+BEST.MAE).toFixed(decimals);
+
+  document.getElementById('predBig').textContent=pred.toFixed(decimals);
+  document.getElementById('predUnit').textContent=`${TARGET_NAME}`;
+  document.getElementById('predInterval').textContent=`[${lo} – ${hi}]`;
+  document.getElementById('predAcc').textContent=(Math.max(0,BEST.R2te)*100).toFixed(1)+'%';
+  document.getElementById('predMdl').textContent=BEST.name;
+
+  // Quality badge
+  const qual=BEST.R2te>0.85?'✅ Excellente précision':BEST.R2te>0.65?'⚠️ Précision modérée':'❌ Modèle peu précis';
+  document.getElementById('predQuality').textContent=qual;
+
+  document.getElementById('predResult').style.display='block';
+  document.getElementById('predResult').scrollIntoView({behavior:'smooth',block:'nearest'});
+}
+</script>
+</body>
+</html>
